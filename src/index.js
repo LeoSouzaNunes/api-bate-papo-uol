@@ -18,8 +18,8 @@ async function connectToCollection(collectionName) {
         const collection = connection.db("api-batepapo-uol").collection(collectionName);
 
         return [connection, collection];
-    } catch {
-        console.log("connectMongo has some issues...");
+    } catch (error) {
+        console.log("connectMongo has some issues...", error);
     }
 }
 
@@ -43,8 +43,8 @@ app.post("/participants", async (req, res) => {
         res.sendStatus(201);
         connectionParticipant.close();
         connectionMessage.close();
-    } catch {
-        console.log("Error at the POST in /participants route");
+    } catch (error) {
+        console.log("Error at the POST in /participants route", error);
         connectionParticipant.close();
         connectionMessage.close();
     }
@@ -59,9 +59,30 @@ app.get("/participants", async (req, res) => {
         const participants = await collectionParticipants.find({}).toArray();
         res.send(participants);
         connectionParticipants.close();
-    } catch {
-        console.log("Error at the GET in /participants route");
+    } catch (error) {
+        console.log("Error at the GET in /participants route", error);
         connectionParticipants.close();
+    }
+});
+
+app.post("/messages", async (req, res) => {
+    const message = {
+        from: req.headers.user,
+        to: req.body.to,
+        text: req.body.text,
+        type: req.body.type,
+        time: dayjs().format("HH:mm:ss"),
+    };
+
+    const [connectionMessage, collectionMessage] = await connectToCollection("messages");
+
+    try {
+        await collectionMessage.insertOne(message);
+        res.sendStatus(201);
+        connectionMessage.close();
+    } catch (error) {
+        console.log("Error at the POST in /messages route", error);
+        connectionMessage.close();
     }
 });
 
