@@ -86,4 +86,25 @@ app.post("/messages", async (req, res) => {
     }
 });
 
+app.get("/messages", async (req, res) => {
+    const messagesLimit = req.query.limit;
+    const [connectionMessages, collectionMessages] = await connectToCollection("messages");
+
+    try {
+        const messages = await collectionMessages.find({}).toArray();
+
+        if (!messagesLimit || messagesLimit <= 0) {
+            res.send(messages);
+            connectionMessages.close();
+            return;
+        }
+
+        res.send([...messages].reverse().slice(0, messagesLimit).reverse());
+        connectionMessages.close();
+    } catch (error) {
+        console.log("Error at the POST in /messages route", error);
+        connectionMessages.close();
+    }
+});
+
 app.listen(5000, () => console.log("Running at http://localhost:5000"));
