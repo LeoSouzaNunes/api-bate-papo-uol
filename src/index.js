@@ -3,12 +3,17 @@ import cors from "cors";
 import { MongoClient } from "mongodb";
 import dotenv from "dotenv";
 import dayjs from "dayjs";
+import joi from "joi";
 
 dotenv.config();
 const app = express();
 
 app.use(express.json());
 app.use(cors());
+
+const usernameSchema = joi.object({
+    name: joi.string().required(),
+});
 
 async function connectToCollection(collectionName) {
     const mongoClient = new MongoClient(process.env.MONGO_URI);
@@ -24,6 +29,13 @@ async function connectToCollection(collectionName) {
 }
 
 app.post("/participants", async (req, res) => {
+    const validation = usernameSchema.validate(req.body, { abortEarly: true });
+
+    if (validation.error) {
+        res.status(422).send(validation.error.details[0].message);
+        return;
+    }
+
     const participant = { name: req.body.name, lastStatus: Date.now() };
     const introMessage = {
         from: req.body.name,
@@ -36,6 +48,15 @@ app.post("/participants", async (req, res) => {
         "participants"
     );
     const [connectionMessage, collectionMessage] = await connectToCollection("messages");
+
+    const isRepeated = await collectionParticipant.findOne(req.body);
+    console.log(isRepeated);
+    if (isRepeated) {
+        res.status(409).send("Name already in use by someone else");
+        connectionParticipant.close();
+        connectionMessage.close();
+        return;
+    }
 
     try {
         await collectionMessage.insertOne(introMessage);
