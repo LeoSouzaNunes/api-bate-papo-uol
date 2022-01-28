@@ -15,6 +15,15 @@ const usernameSchema = joi.object({
     name: joi.string().required(),
 });
 
+const messageSchema = joi.object({
+    to: joi.string().required(),
+    text: joi.string().required(),
+    type: joi
+        .string()
+        .pattern(/(message)|(private_messsage)/)
+        .required(),
+});
+
 async function connectToCollection(collectionName) {
     const mongoClient = new MongoClient(process.env.MONGO_URI);
 
@@ -44,13 +53,11 @@ app.post("/participants", async (req, res) => {
         type: "status",
         time: dayjs().format("HH:mm:ss"),
     };
-    const [connectionParticipant, collectionParticipant] = await connectToCollection(
-        "participants"
-    );
+    const [connectionParticipant, collectionParticipant] = await connectToCollection("participants");
     const [connectionMessage, collectionMessage] = await connectToCollection("messages");
 
     const isRepeated = await collectionParticipant.findOne(req.body);
-    console.log(isRepeated);
+
     if (isRepeated) {
         res.status(409).send("Name already in use by someone else");
         connectionParticipant.close();
@@ -72,9 +79,7 @@ app.post("/participants", async (req, res) => {
 });
 
 app.get("/participants", async (req, res) => {
-    const [connectionParticipants, collectionParticipants] = await connectToCollection(
-        "participants"
-    );
+    const [connectionParticipants, collectionParticipants] = await connectToCollection("participants");
 
     try {
         const participants = await collectionParticipants.find({}).toArray();
@@ -87,6 +92,13 @@ app.get("/participants", async (req, res) => {
 });
 
 app.post("/messages", async (req, res) => {
+    const validation = messageSchema.validate(req.body, { abortEarly: true });
+
+    if (validation.error) {
+        res.status(422).send(validation.error.details[0].message);
+        return;
+    }
+
     const message = {
         from: req.headers.user,
         to: req.body.to,
@@ -96,6 +108,16 @@ app.post("/messages", async (req, res) => {
     };
 
     const [connectionMessage, collectionMessage] = await connectToCollection("messages");
+    const [connectionParticipants, collectionParticipants] = await connectToCollection("participants");
+
+    const userNotFound = await collectionParticipants.findOne({ name: req.headers.user });
+
+    if (!userNotFound) {
+        res.status(422).send("Username not found");
+        connectionParticipants.close();
+        connectionMessage.close();
+        return;
+    }
 
     try {
         await collectionMessage.insertOne(message);
