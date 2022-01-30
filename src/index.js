@@ -130,11 +130,21 @@ app.post("/messages", async (req, res) => {
 });
 
 app.get("/messages", async (req, res) => {
+    const username = req.headers.user;
+    console.log(username);
     const messagesLimit = req.query.limit;
     const [connectionMessages, collectionMessages] = await connectToCollection("messages");
 
     try {
-        const messages = await collectionMessages.find({}).toArray();
+        const messages = await collectionMessages
+            .find({
+                $or: [
+                    { to: "Todos" },
+                    { from: username, type: "private_message" },
+                    { to: username, type: "private_message" },
+                ],
+            })
+            .toArray();
 
         if (!messagesLimit || messagesLimit <= 0) {
             res.send(messages);
