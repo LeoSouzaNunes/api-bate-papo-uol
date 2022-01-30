@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { MongoClient, ObjectId } from "mongodb";
+import { MongoClient } from "mongodb";
 import dotenv from "dotenv";
 import dayjs from "dayjs";
 import joi from "joi";
@@ -49,6 +49,37 @@ async function findUsername(username) {
         connectionParticipants.close();
         return user;
     }
+}
+
+async function removeInactiveUsers() {
+    const [connectionParticipants, collectionParticipants] = await connectToCollection("participants");
+    const [connectionMessages, collectionMessages] = await connectToCollection("messages");
+    const condition = Date.now() - 10000;
+
+    try {
+        const offlineUsers = await collectionParticipants.find({ lastStatus: { $lt: condition } }).toArray();
+
+        await offlineUsers.forEach(async (offlineUser) => {
+            try {
+                await collectionMessages.insertOne({
+                    from: offlineUser.name,
+                    to: "Todos",
+                    text: "sai da sala...",
+                    type: "status",
+                    time: dayjs().format("HH:mm:ss"),
+                });
+            } catch (error) {
+                console.log(error);
+            }
+        });
+
+        await collectionParticipants.deleteMany({ lastStatus: { $lt: condition } });
+        return;
+    } catch (error) {
+        console.log("Error at removeInactiveUsers function");
+    }
+    connectionParticipants.close();
+    connectionMessages.close();
 }
 
 app.post("/participants", async (req, res) => {
@@ -201,5 +232,9 @@ app.post("/status", async (req, res) => {
         connectionParticipant.close();
     }
 });
+
+setInterval(async () => {
+    await removeInactiveUsers();
+}, 15000);
 
 app.listen(5000, () => console.log("Running at http://localhost:5000"));
