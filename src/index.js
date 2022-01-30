@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
 import dayjs from "dayjs";
 import joi from "joi";
@@ -34,6 +34,20 @@ async function connectToCollection(collectionName) {
         return [connection, collection];
     } catch (error) {
         console.log("connectMongo has some issues...", error);
+    }
+}
+
+async function findUsername(username) {
+    const [connectionParticipants, collectionParticipants] = await connectToCollection("participants");
+
+    const user = await collectionParticipants.findOne({ name: username });
+
+    if (!user) {
+        connectionParticipants.close();
+        return "Not found";
+    } else {
+        connectionParticipants.close();
+        return user;
     }
 }
 
@@ -83,7 +97,7 @@ app.get("/participants", async (req, res) => {
 
     try {
         const participants = await collectionParticipants.find({}).toArray();
-        res.send(participants);
+        res.status(200).send(participants);
         connectionParticipants.close();
     } catch (error) {
         console.log("Error at the GET in /participants route", error);
@@ -108,13 +122,9 @@ app.post("/messages", async (req, res) => {
     };
 
     const [connectionMessage, collectionMessage] = await connectToCollection("messages");
-    const [connectionParticipants, collectionParticipants] = await connectToCollection("participants");
 
-    const userNotFound = await collectionParticipants.findOne({ name: req.headers.user });
-
-    if (!userNotFound) {
+    if ((await findUsername(req.headers.user)) === "Not found") {
         res.status(422).send("Username not found");
-        connectionParticipants.close();
         connectionMessage.close();
         return;
     }
@@ -131,9 +141,15 @@ app.post("/messages", async (req, res) => {
 
 app.get("/messages", async (req, res) => {
     const username = req.headers.user;
-    console.log(username);
+
     const messagesLimit = req.query.limit;
     const [connectionMessages, collectionMessages] = await connectToCollection("messages");
+
+    if ((await findUsername(username)) === "Not found") {
+        res.status(404).send("Username not found");
+        connectionMessages.close();
+        return;
+    }
 
     try {
         const messages = await collectionMessages
@@ -157,6 +173,32 @@ app.get("/messages", async (req, res) => {
     } catch (error) {
         console.log("Error at the POST in /messages route", error);
         connectionMessages.close();
+    }
+});
+
+app.post("/status", async (req, res) => {
+    const username = req.headers.user;
+    const user = await findUsername(username);
+    if (user === "Not found") {
+        res.sendStatus(404);
+        return;
+    }
+
+    const [connectionParticipant, collectionParticipant] = await connectToCollection("participants");
+
+    try {
+        await collectionParticipant.updateOne(
+            {
+                _id: user._id,
+            },
+            { $set: { ...user, lastStatus: Date.now() } }
+        );
+
+        connectionParticipant.close();
+        res.sendStatus(200);
+    } catch (error) {
+        console.log("Error at the POST in /status route", error);
+        connectionParticipant.close();
     }
 });
 
