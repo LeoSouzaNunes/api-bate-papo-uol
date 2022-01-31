@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
 import dayjs from "dayjs";
 import joi from "joi";
@@ -243,6 +243,89 @@ app.post("/status", async (req, res) => {
     } catch (error) {
         console.log("Error at the POST in /status route", error);
         connectionParticipant.close();
+    }
+});
+
+app.delete("/messages/:messageId", async (req, res) => {
+    const username = stripHtml(req.headers.user).result.trim();
+    const id = req.params.messageId;
+
+    const [connectionMessages, collectionMessages] = await connectToCollection("messages");
+
+    try {
+        const message = await collectionMessages.findOne({ _id: new ObjectId(id) });
+
+        if (!message) {
+            res.sendStatus(404);
+            connectionMessages.close();
+            return;
+        }
+
+        if (message.from !== username) {
+            res.sendStatus(401);
+            connectionMessages.close();
+            return;
+        }
+
+        await collectionMessages.deleteOne({ _id: message._id });
+        res.sendStatus(200);
+        connectionMessages.close();
+    } catch (error) {
+        console.log(error);
+        res.sendStatus(500);
+        connectionMessages.close();
+    }
+});
+
+app.put("/messages/:messageId", async (req, res) => {
+    const username = stripHtml(req.headers.user).result.trim();
+    const id = req.params.messageId;
+
+    const requestObject = {
+        to: stripHtml(req.body.to).result.trim(),
+        text: stripHtml(req.body.text).result.trim(),
+        type: stripHtml(req.body.type).result.trim(),
+    };
+
+    const messageObject = {
+        from: username,
+        to: stripHtml(req.body.to).result.trim(),
+        text: stripHtml(req.body.text).result.trim(),
+        type: stripHtml(req.body.type).result.trim(),
+        time: dayjs().format("HH:mm:ss"),
+    };
+
+    const validation = messageSchema.validate(requestObject, { abortEarly: true });
+
+    if (validation.error) {
+        res.status(422).send(validation.error.details[0].message);
+        return;
+    }
+
+    const [connectionMessages, collectionMessages] = await connectToCollection("messages");
+
+    try {
+        const message = await collectionMessages.findOne({ _id: new ObjectId(id) });
+
+        if (!message) {
+            res.sendStatus(404);
+            connectionMessages.close();
+            return;
+        }
+
+        if (message.from !== username) {
+            res.sendStatus(401);
+            connectionMessages.close();
+            return;
+        }
+
+        await collectionMessages.updateOne({ _id: message._id }, { $set: { ...message, ...messageObject } });
+        res.sendStatus(200);
+        connectionMessages.close();
+    } catch (error) {
+        console.log(error);
+        res.sendStatus(500);
+        connectionMessages.close();
     }
 });
 
