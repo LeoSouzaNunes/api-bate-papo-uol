@@ -21,7 +21,7 @@ const messageSchema = joi.object({
     text: joi.string().required(),
     type: joi
         .string()
-        .pattern(/(message)|(private_messsage)/)
+        .pattern(/(message)\b|(private_messsage)\b/)
         .required(),
 });
 
