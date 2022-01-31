@@ -186,7 +186,8 @@ app.get("/messages", async (req, res) => {
         const messages = await collectionMessages
             .find({
                 $or: [
-                    { to: "Todos" },
+                    { type: "status" },
+                    { type: "message" },
                     { from: username, type: "private_message" },
                     { to: username, type: "private_message" },
                 ],
