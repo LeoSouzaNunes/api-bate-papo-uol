@@ -4,6 +4,7 @@ import { MongoClient } from "mongodb";
 import dotenv from "dotenv";
 import dayjs from "dayjs";
 import joi from "joi";
+import { stripHtml } from "string-strip-html";
 
 dotenv.config();
 const app = express();
@@ -83,16 +84,20 @@ async function removeInactiveUsers() {
 }
 
 app.post("/participants", async (req, res) => {
-    const validation = usernameSchema.validate(req.body, { abortEarly: true });
+    const nameObject = {
+        name: stripHtml(req.body.name).result.trim(),
+    };
+
+    const validation = usernameSchema.validate(nameObject, { abortEarly: true });
 
     if (validation.error) {
         res.status(422).send(validation.error.details[0].message);
         return;
     }
 
-    const participant = { name: req.body.name, lastStatus: Date.now() };
+    const participant = { name: nameObject.name, lastStatus: Date.now() };
     const introMessage = {
-        from: req.body.name,
+        from: nameObject.name,
         to: "Todos",
         text: "entra na sala...",
         type: "status",
@@ -101,7 +106,7 @@ app.post("/participants", async (req, res) => {
     const [connectionParticipant, collectionParticipant] = await connectToCollection("participants");
     const [connectionMessage, collectionMessage] = await connectToCollection("messages");
 
-    const isRepeated = await collectionParticipant.findOne(req.body);
+    const isRepeated = await collectionParticipant.findOne(nameObject);
 
     if (isRepeated) {
         res.status(409).send("Name already in use by someone else");
@@ -137,31 +142,38 @@ app.get("/participants", async (req, res) => {
 });
 
 app.post("/messages", async (req, res) => {
-    const validation = messageSchema.validate(req.body, { abortEarly: true });
+    const username = stripHtml(req.headers.user).result.trim();
+    const requestObject = {
+        to: stripHtml(req.body.to).result.trim(),
+        text: stripHtml(req.body.text).result.trim(),
+        type: stripHtml(req.body.type).result.trim(),
+    };
+
+    const messageObject = {
+        from: username,
+        to: stripHtml(req.body.to).result.trim(),
+        text: stripHtml(req.body.text).result.trim(),
+        type: stripHtml(req.body.type).result.trim(),
+        time: dayjs().format("HH:mm:ss"),
+    };
+
+    const validation = messageSchema.validate(requestObject, { abortEarly: true });
 
     if (validation.error) {
         res.status(422).send(validation.error.details[0].message);
         return;
     }
 
-    const message = {
-        from: req.headers.user,
-        to: req.body.to,
-        text: req.body.text,
-        type: req.body.type,
-        time: dayjs().format("HH:mm:ss"),
-    };
-
     const [connectionMessage, collectionMessage] = await connectToCollection("messages");
 
-    if ((await findUsername(req.headers.user)) === "Not found") {
+    if ((await findUsername(username)) === "Not found") {
         res.status(422).send("Username not found");
         connectionMessage.close();
         return;
     }
 
     try {
-        await collectionMessage.insertOne(message);
+        await collectionMessage.insertOne(messageObject);
         res.sendStatus(201);
         connectionMessage.close();
     } catch (error) {
@@ -171,7 +183,7 @@ app.post("/messages", async (req, res) => {
 });
 
 app.get("/messages", async (req, res) => {
-    const username = req.headers.user;
+    const username = stripHtml(req.headers.user).result.trim();
 
     const messagesLimit = req.query.limit;
     const [connectionMessages, collectionMessages] = await connectToCollection("messages");
@@ -209,7 +221,7 @@ app.get("/messages", async (req, res) => {
 });
 
 app.post("/status", async (req, res) => {
-    const username = req.headers.user;
+    const username = stripHtml(req.headers.user).result.trim();
     const user = await findUsername(username);
     if (user === "Not found") {
         res.sendStatus(404);
